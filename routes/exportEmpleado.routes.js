@@ -7,7 +7,13 @@ const { formatearHora, calcularHorasBaseYExtra } = require('../helpers/tiempo');
 
 const router = express.Router();
 
-// Excel por empleado
+// Tarifas (deben coincidir con turnos.routes.js)
+const TARIFA_HORA = 3750;          // valor por hora normal
+const TARIFA_HORA_EXTRA = 3750;    // valor por hora extra
+
+// =======================================================
+//                 Excel por empleado
+// =======================================================
 router.get('/empleados/:id/turnos/excel', (req, res) => {
   const { id } = req.params;
   let { anio, mes, empresa_id, desde, hasta } = req.query;
@@ -45,6 +51,9 @@ router.get('/empleados/:id/turnos/excel', (req, res) => {
           t.area,
           t.horas_trabajadas,
           t.horas_extra,
+          t.valor_horas_extra,
+          t.valor_fijo,
+          t.sueldo_total,
           e.nombre AS empresa_nombre
         FROM turnos t
         LEFT JOIN empresas e ON t.empresa_id = e.id
@@ -77,6 +86,7 @@ router.get('/empleados/:id/turnos/excel', (req, res) => {
           const workbook = new ExcelJS.Workbook();
           const sheet = workbook.addWorksheet('Turnos');
 
+          // Encabezados
           sheet.addRow([
             'Empleado',
             'Fecha',
@@ -87,9 +97,19 @@ router.get('/empleados/:id/turnos/excel', (req, res) => {
             'Hora salida',
             'Horas trabajadas',
             'Horas extra',
+            'Valor horas extra',
+            'Valor fijo',
+            'Sueldo total',
           ]);
 
+          let totalHorasTrab = 0;
+          let totalHorasExtra = 0;
+          let totalValorHorasExtra = 0;
+          let totalValorFijo = 0;
+          let totalSueldo = 0;
+
           rows.forEach((row) => {
+            // Horas base y extra
             let base = row.horas_trabajadas;
             let extra = row.horas_extra;
 
@@ -102,6 +122,26 @@ router.get('/empleados/:id/turnos/excel', (req, res) => {
               extra = calc.extra;
             }
 
+            const horasTrab = base || 0;
+            const horasExtra = extra || 0;
+
+            // Valores monetarios: usar BD si están, si no, calcular
+            let valor_horas_extra = row.valor_horas_extra;
+            let valor_fijo = row.valor_fijo;
+            let sueldo_total = row.sueldo_total;
+
+            if (valor_horas_extra == null || valor_fijo == null || sueldo_total == null) {
+              valor_fijo = horasTrab * TARIFA_HORA;
+              valor_horas_extra = horasExtra * TARIFA_HORA_EXTRA;
+              sueldo_total = valor_fijo + valor_horas_extra;
+            }
+
+            totalHorasTrab += horasTrab;
+            totalHorasExtra += horasExtra;
+            totalValorHorasExtra += valor_horas_extra || 0;
+            totalValorFijo += valor_fijo || 0;
+            totalSueldo += sueldo_total || 0;
+
             sheet.addRow([
               empleado.nombre,
               row.fecha || '',
@@ -112,8 +152,28 @@ router.get('/empleados/:id/turnos/excel', (req, res) => {
               formatearHora(row.hora_salida),
               base != null ? base : '',
               extra != null ? extra : '',
+              valor_horas_extra != null ? valor_horas_extra : '',
+              valor_fijo != null ? valor_fijo : '',
+              sueldo_total != null ? sueldo_total : '',
             ]);
           });
+
+          // Fila de totales
+          sheet.addRow([]);
+          sheet.addRow([
+            'TOTALES',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            totalHorasTrab,
+            totalHorasExtra,
+            totalValorHorasExtra,
+            totalValorFijo,
+            totalSueldo,
+          ]);
 
           const labelPeriodo = usaRango
             ? `${desde}_a_${hasta}`
@@ -142,7 +202,9 @@ router.get('/empleados/:id/turnos/excel', (req, res) => {
   );
 });
 
-// PDF por empleado
+// =======================================================
+//                 PDF por empleado
+// =======================================================
 router.get('/empleados/:id/turnos/pdf', (req, res) => {
   const { id } = req.params;
   let { anio, mes, empresa_id, desde, hasta } = req.query;
@@ -180,6 +242,9 @@ router.get('/empleados/:id/turnos/pdf', (req, res) => {
           t.area,
           t.horas_trabajadas,
           t.horas_extra,
+          t.valor_horas_extra,
+          t.valor_fijo,
+          t.sueldo_total,
           e.nombre AS empresa_nombre
         FROM turnos t
         LEFT JOIN empresas e ON t.empresa_id = e.id
@@ -233,17 +298,27 @@ router.get('/empleados/:id/turnos/pdf', (req, res) => {
         let y = doc.y;
 
         doc.fontSize(10);
+        // Encabezados
         doc.text('Fecha', startX, y);
-        doc.text('Empresa', startX + 70, y, { width: 110 });
-        doc.text('Evento', startX + 180, y, { width: 110 });
-        doc.text('Área', startX + 290, y, { width: 70 });
-        doc.text('Ent', startX + 360, y);
-        doc.text('Sal', startX + 390, y);
-        doc.text('Trab', startX + 420, y);
-        doc.text('Extra', startX + 470, y);
+        doc.text('Empresa', startX + 60, y, { width: 80 });
+        doc.text('Evento', startX + 140, y, { width: 80 });
+        doc.text('Área', startX + 220, y, { width: 50 });
+        doc.text('Ent', startX + 270, y);
+        doc.text('Sal', startX + 295, y);
+        doc.text('Trab', startX + 320, y);
+        doc.text('Extra', startX + 360, y);
+        doc.text('$Ext', startX + 395, y);   // Valor horas extra
+        doc.text('$Fijo', startX + 440, y);  // Valor fijo
+        doc.text('Total', startX + 485, y);  // Sueldo total
 
-        doc.moveTo(startX, y + 12).lineTo(560, y + 12).stroke();
+        doc.moveTo(startX, y + 12).lineTo(580, y + 12).stroke();
         y += 16;
+
+        let totalHorasTrab = 0;
+        let totalHorasExtra = 0;
+        let totalValorHorasExtra = 0;
+        let totalValorFijo = 0;
+        let totalSueldo = 0;
 
         rows.forEach((row) => {
           if (y > 760) {
@@ -263,18 +338,75 @@ router.get('/empleados/:id/turnos/pdf', (req, res) => {
             extra = calc.extra;
           }
 
+          const horasTrab = base || 0;
+          const horasExtra = extra || 0;
+
+          let valor_horas_extra = row.valor_horas_extra;
+          let valor_fijo = row.valor_fijo;
+          let sueldo_total = row.sueldo_total;
+
+          if (valor_horas_extra == null || valor_fijo == null || sueldo_total == null) {
+            valor_fijo = horasTrab * TARIFA_HORA;
+            valor_horas_extra = horasExtra * TARIFA_HORA_EXTRA;
+            sueldo_total = valor_fijo + valor_horas_extra;
+          }
+
+          totalHorasTrab += horasTrab;
+          totalHorasExtra += horasExtra;
+          totalValorHorasExtra += valor_horas_extra || 0;
+          totalValorFijo += valor_fijo || 0;
+          totalSueldo += sueldo_total || 0;
+
           doc.fontSize(9);
           doc.text(row.fecha || '', startX, y);
-          doc.text(row.empresa_nombre || '', startX + 70, y, { width: 110 });
-          doc.text(row.nombre_evento || '', startX + 180, y, { width: 110 });
-          doc.text(row.area || '', startX + 290, y, { width: 70 });
-          doc.text(formatearHora(row.hora_entrada), startX + 360, y);
-          doc.text(formatearHora(row.hora_salida), startX + 390, y);
-          doc.text(base != null ? base.toFixed(2) : '', startX + 420, y);
-          doc.text(extra != null ? extra.toFixed(2) : '', startX + 470, y);
+          doc.text(row.empresa_nombre || '', startX + 60, y, { width: 80 });
+          doc.text(row.nombre_evento || '', startX + 140, y, { width: 80 });
+          doc.text(row.area || '', startX + 220, y, { width: 50 });
+          doc.text(formatearHora(row.hora_entrada), startX + 270, y);
+          doc.text(formatearHora(row.hora_salida), startX + 295, y);
+          doc.text(base != null ? base.toFixed(2) : '', startX + 320, y);
+          doc.text(extra != null ? extra.toFixed(2) : '', startX + 360, y);
+          doc.text(
+            valor_horas_extra != null ? valor_horas_extra.toFixed(0) : '',
+            startX + 395,
+            y
+          );
+          doc.text(
+            valor_fijo != null ? valor_fijo.toFixed(0) : '',
+            startX + 440,
+            y
+          );
+          doc.text(
+            sueldo_total != null ? sueldo_total.toFixed(0) : '',
+            startX + 485,
+            y
+          );
 
           y += 14;
         });
+
+        // Resumen de totales al final
+        if (y > 720) {
+          doc.addPage();
+          y = 40;
+        }
+
+        doc.moveDown();
+        y = doc.y + 10;
+
+        doc.fontSize(11).text('RESUMEN DE TOTALES', startX, y);
+        y += 18;
+
+        doc.fontSize(10);
+        doc.text(`Total horas trabajadas: ${totalHorasTrab.toFixed(2)}`, startX, y);
+        y += 14;
+        doc.text(`Total horas extra: ${totalHorasExtra.toFixed(2)}`, startX, y);
+        y += 14;
+        doc.text(`Total valor horas extra: ${totalValorHorasExtra.toFixed(0)}`, startX, y);
+        y += 14;
+        doc.text(`Total valor fijo: ${totalValorFijo.toFixed(0)}`, startX, y);
+        y += 14;
+        doc.text(`Sueldo total: ${totalSueldo.toFixed(0)}`, startX, y);
 
         doc.end();
       });

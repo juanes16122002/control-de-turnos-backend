@@ -5,7 +5,13 @@ const { calcularHorasBaseYExtra } = require('../helpers/tiempo');
 
 const router = express.Router();
 
-// Registrar ENTRADA automática
+// Tarifas (puedes ajustarlas aquí)
+const TARIFA_HORA = 3750;          // valor por hora normal
+const TARIFA_HORA_EXTRA = 4750;    // valor por hora extra
+
+// ============================
+//   Registrar ENTRADA automática
+// ============================
 router.post('/turnos/entrada', (req, res) => {
   const { empleado_id, empresa_id, nombre_evento, area } = req.body;
 
@@ -20,8 +26,9 @@ router.post('/turnos/entrada', (req, res) => {
   db.run(
     `
     INSERT INTO turnos
-      (empleado_id, fecha, hora_entrada, empresa_id, nombre_evento, area, horas_trabajadas, horas_extra)
-    VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
+      (empleado_id, fecha, hora_entrada, hora_salida, empresa_id, nombre_evento, area,
+       horas_trabajadas, horas_extra, valor_horas_extra, valor_fijo, sueldo_total)
+    VALUES (?, ?, ?, NULL, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)
     `,
     [
       empleado_id,
@@ -42,17 +49,23 @@ router.post('/turnos/entrada', (req, res) => {
         empleado_id,
         fecha,
         hora_entrada,
+        hora_salida: null,
         empresa_id: empresa_id || null,
         nombre_evento: nombre_evento || null,
         area: area || null,
         horas_trabajadas: null,
         horas_extra: null,
+        valor_horas_extra: null,
+        valor_fijo: null,
+        sueldo_total: null,
       });
     }
   );
 });
 
-// Registrar SALIDA automática
+// ============================
+//   Registrar SALIDA automática
+// ============================
 router.post('/turnos/salida', (req, res) => {
   const { empleado_id } = req.body;
 
@@ -89,25 +102,50 @@ router.post('/turnos/salida', (req, res) => {
         hora_salida
       );
 
+      const horasTrab = base || 0;
+      const horasExtra = extra || 0;
+
+      const valor_fijo = horasTrab * TARIFA_HORA;
+      const valor_horas_extra = horasExtra * TARIFA_HORA_EXTRA;
+      const sueldo_total = valor_fijo + valor_horas_extra;
+
       db.run(
         `
         UPDATE turnos
-        SET hora_salida = ?, horas_trabajadas = ?, horas_extra = ?
+        SET hora_salida = ?,
+            horas_trabajadas = ?,
+            horas_extra = ?,
+            valor_horas_extra = ?,
+            valor_fijo = ?,
+            sueldo_total = ?
         WHERE id = ?
         `,
-        [hora_salida, base, extra, row.id],
+        [
+          hora_salida,
+          horasTrab,
+          horasExtra,
+          valor_horas_extra,
+          valor_fijo,
+          sueldo_total,
+          row.id,
+        ],
         function (err2) {
           if (err2) {
             console.error(err2);
-            return res.status(500).json({ error: 'Error al registrar salida' });
+            return res
+              .status(500)
+              .json({ error: 'Error al registrar salida' });
           }
 
           res.json({
             id: row.id,
             empleado_id,
             hora_salida,
-            horas_trabajadas: base,
-            horas_extra: extra,
+            horas_trabajadas: horasTrab,
+            horas_extra: horasExtra,
+            valor_horas_extra,
+            valor_fijo,
+            sueldo_total,
           });
         }
       );
@@ -115,7 +153,9 @@ router.post('/turnos/salida', (req, res) => {
   );
 });
 
-// Crear turno manual
+// ============================
+//   Crear turno manual
+// ============================
 router.post('/turnos', (req, res) => {
   const {
     empleado_id,
@@ -136,11 +176,19 @@ router.post('/turnos', (req, res) => {
 
   const { base, extra } = calcularHorasBaseYExtra(hora_entrada, hora_salida);
 
+  const horasTrab = base || 0;
+  const horasExtra = extra || 0;
+
+  const valor_fijo = horasTrab * TARIFA_HORA;
+  const valor_horas_extra = horasExtra * TARIFA_HORA_EXTRA;
+  const sueldo_total = valor_fijo + valor_horas_extra;
+
   db.run(
     `
     INSERT INTO turnos
-      (empleado_id, fecha, hora_entrada, hora_salida, empresa_id, nombre_evento, area, horas_trabajadas, horas_extra)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (empleado_id, fecha, hora_entrada, hora_salida, empresa_id, nombre_evento, area,
+       horas_trabajadas, horas_extra, valor_horas_extra, valor_fijo, sueldo_total)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       empleado_id,
@@ -150,8 +198,11 @@ router.post('/turnos', (req, res) => {
       empresa_id || null,
       nombre_evento,
       area,
-      base,
-      extra,
+      horasTrab,
+      horasExtra,
+      valor_horas_extra,
+      valor_fijo,
+      sueldo_total,
     ],
     function (err) {
       if (err) {
@@ -168,14 +219,19 @@ router.post('/turnos', (req, res) => {
         empresa_id: empresa_id || null,
         nombre_evento,
         area,
-        horas_trabajadas: base,
-        horas_extra: extra,
+        horas_trabajadas: horasTrab,
+        horas_extra: horasExtra,
+        valor_horas_extra,
+        valor_fijo,
+        sueldo_total,
       });
     }
   );
 });
 
-// Editar turno
+// ============================
+//   Editar turno
+// ============================
 router.put('/turnos/:id', (req, res) => {
   const { id } = req.params;
   const {
@@ -197,6 +253,13 @@ router.put('/turnos/:id', (req, res) => {
 
   const { base, extra } = calcularHorasBaseYExtra(hora_entrada, hora_salida);
 
+  const horasTrab = base || 0;
+  const horasExtra = extra || 0;
+
+  const valor_fijo = horasTrab * TARIFA_HORA;
+  const valor_horas_extra = horasExtra * TARIFA_HORA_EXTRA;
+  const sueldo_total = valor_fijo + valor_horas_extra;
+
   db.run(
     `
     UPDATE turnos
@@ -208,7 +271,10 @@ router.put('/turnos/:id', (req, res) => {
         nombre_evento = ?,
         area = ?,
         horas_trabajadas = ?,
-        horas_extra = ?
+        horas_extra = ?,
+        valor_horas_extra = ?,
+        valor_fijo = ?,
+        sueldo_total = ?
     WHERE id = ?
     `,
     [
@@ -219,8 +285,11 @@ router.put('/turnos/:id', (req, res) => {
       empresa_id || null,
       nombre_evento,
       area,
-      base,
-      extra,
+      horasTrab,
+      horasExtra,
+      valor_horas_extra,
+      valor_fijo,
+      sueldo_total,
       id,
     ],
     function (err) {
@@ -242,14 +311,19 @@ router.put('/turnos/:id', (req, res) => {
         empresa_id: empresa_id || null,
         nombre_evento,
         area,
-        horas_trabajadas: base,
-        horas_extra: extra,
+        horas_trabajadas: horasTrab,
+        horas_extra: horasExtra,
+        valor_horas_extra,
+        valor_fijo,
+        sueldo_total,
       });
     }
   );
 });
 
-// Eliminar turno
+// ============================
+//   Eliminar turno
+// ============================
 router.delete('/turnos/:id', (req, res) => {
   const { id } = req.params;
 
@@ -271,7 +345,9 @@ router.delete('/turnos/:id', (req, res) => {
   );
 });
 
-// Turnos de un empleado (por mes y empresa)
+// ============================
+//   Turnos de un empleado (por mes y empresa)
+// ============================
 router.get('/empleados/:id/turnos', (req, res) => {
   const { id } = req.params;
   let { anio, mes, empresa_id } = req.query;
@@ -295,6 +371,9 @@ router.get('/empleados/:id/turnos', (req, res) => {
       t.area,
       t.horas_trabajadas,
       t.horas_extra,
+      t.valor_horas_extra,
+      t.valor_fijo,
+      t.sueldo_total,
       e.nombre AS empresa_nombre
     FROM turnos t
     LEFT JOIN empresas e ON t.empresa_id = e.id
@@ -319,7 +398,9 @@ router.get('/empleados/:id/turnos', (req, res) => {
   });
 });
 
-// Vista global de turnos (JSON)
+// ============================
+//   Vista global de turnos (JSON)
+// ============================
 router.get('/turnos', (req, res) => {
   let { desde, hasta, empleado_id, empresa_id } = req.query;
 
@@ -333,6 +414,9 @@ router.get('/turnos', (req, res) => {
       t.area,
       t.horas_trabajadas,
       t.horas_extra,
+      t.valor_horas_extra,
+      t.valor_fijo,
+      t.sueldo_total,
       e.nombre AS empleado_nombre,
       emp.nombre AS empresa_nombre
     FROM turnos t

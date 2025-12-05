@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -32,7 +31,8 @@ app.use(turnosRoutes);
 app.use(exportEmpleadoRoutes);
 app.use(exportGlobalRoutes);
 
-// Iniciar servidor
-app.listen(5000, () => {
-  console.log('Servidor corriendo en http://localhost:5000');
+// Iniciar servidor (IMPORTANTE: usar process.env.PORT)
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
