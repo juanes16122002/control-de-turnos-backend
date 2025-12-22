@@ -8,8 +8,8 @@ const { formatearHora, calcularHorasBaseYExtra } = require('../helpers/tiempo');
 const router = express.Router();
 
 // Tarifas (deben coincidir con las usadas en turnos.routes.js)
-const TARIFA_HORA = 3750;          // valor por hora normal
-const TARIFA_HORA_EXTRA = 3750;    // valor por hora extra
+const TARIFA_HORA = 4750;          // valor por hora normal
+const TARIFA_HORA_EXTRA = 4750;    // valor por hora extra
 
 // =======================================================
 //                  Excel global

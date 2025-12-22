@@ -6,7 +6,7 @@ const { calcularHorasBaseYExtra } = require('../helpers/tiempo');
 const router = express.Router();
 
 // Tarifas (puedes ajustarlas aquí)
-const TARIFA_HORA = 3750;          // valor por hora normal
+const TARIFA_HORA = 4750;          // valor por hora normal
 const TARIFA_HORA_EXTRA = 4750;    // valor por hora extra
 
 // ============================
