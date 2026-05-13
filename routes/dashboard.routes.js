@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { verificarToken } = require('../middlewares/auth.middleware');
-const exportGlobal = require('../controllers/exportGlobal.controller');
+const dashboard = require('../controllers/dashboard.controller');
 
 router.use(verificarToken);
 
-router.get('/turnos/excel', exportGlobal.excel);
-router.get('/turnos/pdf', exportGlobal.pdf);
+router.get('/dashboard', dashboard.stats);
 
 module.exports = router;

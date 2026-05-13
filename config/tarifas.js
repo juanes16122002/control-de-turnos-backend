@@ -1,0 +1,4 @@
+const TARIFA_HORA = 4750;
+const TARIFA_HORA_EXTRA = 4750;
+
+module.exports = { TARIFA_HORA, TARIFA_HORA_EXTRA };

@@ -1,62 +1,53 @@
-// db.js
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 
-const db = new sqlite3.Database('./horarios.db');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/turnos',
+});
 
-db.serialize(() => {
-  db.run('PRAGMA foreign_keys = ON');
-
-  // Tabla de empleados
-  db.run(`
+async function initDb() {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS empleados (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      tarifa_hora DOUBLE PRECISION DEFAULT 4750,
+      tarifa_hora_extra DOUBLE PRECISION DEFAULT 4750
     )
   `);
 
-  // Tabla de empresas
-  db.run(`
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS empresas (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       nombre TEXT NOT NULL
     )
   `);
 
-  // Tabla de turnos
-  db.run(`
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS turnos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      empleado_id INTEGER NOT NULL,
+      id SERIAL PRIMARY KEY,
+      empleado_id INTEGER NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
       fecha TEXT NOT NULL,
       hora_entrada TEXT NOT NULL,
       hora_salida TEXT,
-      empresa_id INTEGER,
+      empresa_id INTEGER REFERENCES empresas(id) ON DELETE SET NULL,
       nombre_evento TEXT,
       area TEXT,
-      horas_trabajadas REAL,
-      horas_extra REAL,
-      valor_horas_extra REAL,
-      valor_fijo REAL,
-      sueldo_total REAL,
-      FOREIGN KEY (empleado_id) REFERENCES empleados(id) ON DELETE CASCADE,
-      FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE SET NULL
+      horas_trabajadas DOUBLE PRECISION,
+      horas_extra DOUBLE PRECISION,
+      valor_horas_extra DOUBLE PRECISION,
+      valor_fijo DOUBLE PRECISION,
+      sueldo_total DOUBLE PRECISION
     )
   `);
 
-  // Si YA tenías la tabla creada sin estas columnas y NO quieres borrar horarios.db,
-  // puedes ejecutar estos ALTER UNA sola vez (luego coméntalos o quítalos
-  // porque si no fallan por "duplicate column name").
-  /*
-  db.run('ALTER TABLE turnos ADD COLUMN valor_horas_extra REAL', (err) => {
-    if (err) console.log('ALTER valor_horas_extra (posible ya creada):', err.message);
-  });
-  db.run('ALTER TABLE turnos ADD COLUMN valor_fijo REAL', (err) => {
-    if (err) console.log('ALTER valor_fijo (posible ya creada):', err.message);
-  });
-  db.run('ALTER TABLE turnos ADD COLUMN sueldo_total REAL', (err) => {
-    if (err) console.log('ALTER sueldo_total (posible ya creada):', err.message);
-  });
-  */
-});
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id SERIAL PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      usuario TEXT NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+}
 
-module.exports = db;
+module.exports = { pool, initDb };
