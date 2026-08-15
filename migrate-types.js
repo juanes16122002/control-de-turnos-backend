@@ -1,6 +1,7 @@
 // Migración de columnas de texto a tipos reales en PostgreSQL.
 // Uso: node migrate-types.js
 // Idempotente: solo altera columnas que aún sean TEXT.
+require('dotenv').config();
 const { pool } = require('./db');
 
 async function getColumnType(table, column) {

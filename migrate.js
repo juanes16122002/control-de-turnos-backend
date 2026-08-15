@@ -1,3 +1,4 @@
+require('dotenv').config();
 const sqlite3 = require('sqlite3');
 const { pool } = require('./db');
 
