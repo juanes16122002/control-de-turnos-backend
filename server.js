@@ -1,5 +1,12 @@
 require('dotenv').config();
 
+const REQUIRED_ENV = ['JWT_SECRET', 'ADMIN_PASS'];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error(`Faltan variables de entorno obligatorias: ${missingEnv.join(', ')}`);
+  process.exit(1);
+}
+
 const fs = require('fs');
 const path = require('path');
 const express = require('express');

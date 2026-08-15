@@ -1,27 +1,27 @@
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
-const { formatearHora, calcularHorasBaseYExtra } = require('../helpers/tiempo');
+const { formatearHora } = require('../helpers/tiempo');
+const { calcular } = require('./sueldo.service');
 const { TARIFA_HORA, TARIFA_HORA_EXTRA } = require('../config/tarifas');
 
 function calcularFila(row) {
-  let base = row.horas_trabajadas;
-  let extra = row.horas_extra;
-  if (base == null || extra == null) {
-    const calc = calcularHorasBaseYExtra(row.hora_entrada, row.hora_salida);
-    base = calc.base;
-    extra = calc.extra;
-  }
-  const horasTrab = base || 0;
-  const horasExtra = extra || 0;
-  let valor_horas_extra = row.valor_horas_extra;
-  let valor_fijo = row.valor_fijo;
-  let sueldo_total = row.sueldo_total;
-  if (valor_horas_extra == null || valor_fijo == null || sueldo_total == null) {
-    valor_fijo = horasTrab * TARIFA_HORA;
-    valor_horas_extra = horasExtra * TARIFA_HORA_EXTRA;
-    sueldo_total = valor_fijo + valor_horas_extra;
-  }
-  return { horasTrab, horasExtra, valor_horas_extra, valor_fijo, sueldo_total };
+  const tarifaHora = row.tarifa_hora != null ? row.tarifa_hora : TARIFA_HORA;
+  const tarifaHoraExtra = row.tarifa_hora_extra != null ? row.tarifa_hora_extra : TARIFA_HORA_EXTRA;
+
+  const v = calcular({
+    horaEntrada: row.hora_entrada,
+    horaSalida: row.hora_salida,
+    tarifaHora,
+    tarifaHoraExtra,
+  });
+
+  return {
+    horasTrab: row.horas_trabajadas != null ? row.horas_trabajadas : v.horasTrab,
+    horasExtra: row.horas_extra != null ? row.horas_extra : v.horasExtra,
+    valor_horas_extra: row.valor_horas_extra != null ? row.valor_horas_extra : v.valor_horas_extra,
+    valor_fijo: row.valor_fijo != null ? row.valor_fijo : v.valor_fijo,
+    sueldo_total: row.sueldo_total != null ? row.sueldo_total : v.sueldo_total,
+  };
 }
 
 exports.generarExcelEmpleado = (empleado, rows) => {
@@ -157,16 +157,6 @@ exports.generarPDFGlobal = (titulo, rows, res) => {
   for (const row of rows) {
     if (y > 760) { doc.addPage(); y = 40; }
     const v = calcularFila(row);
-    const horasTrab = v.horasTrab || 0;
-    const horasExtra = v.horasExtra || 0;
-    let valor_horas_extra = row.valor_horas_extra;
-    let valor_fijo = row.valor_fijo;
-    let sueldo_total = row.sueldo_total;
-    if (valor_horas_extra == null || valor_fijo == null || sueldo_total == null) {
-      valor_fijo = horasTrab * TARIFA_HORA;
-      valor_horas_extra = horasExtra * TARIFA_HORA_EXTRA;
-      sueldo_total = valor_fijo + valor_horas_extra;
-    }
 
     doc.fontSize(9);
     doc.text(row.fecha || '', startX, y);
@@ -176,11 +166,11 @@ exports.generarPDFGlobal = (titulo, rows, res) => {
     doc.text(row.area || '', startX + 290, y, { width: 50 });
     doc.text(formatearHora(row.hora_entrada), startX + 340, y);
     doc.text(formatearHora(row.hora_salida), startX + 365, y);
-    doc.text(base != null ? base.toFixed(2) : '', startX + 390, y);
-    doc.text(extra != null ? extra.toFixed(2) : '', startX + 420, y);
-    doc.text(valor_horas_extra != null ? valor_horas_extra.toFixed(0) : '', startX + 455, y);
-    doc.text(valor_fijo != null ? valor_fijo.toFixed(0) : '', startX + 495, y);
-    doc.text(sueldo_total != null ? sueldo_total.toFixed(0) : '', startX + 535, y);
+    doc.text(v.horasTrab ? v.horasTrab.toFixed(2) : '', startX + 390, y);
+    doc.text(v.horasExtra ? v.horasExtra.toFixed(2) : '', startX + 420, y);
+    doc.text(v.valor_horas_extra ? v.valor_horas_extra.toFixed(0) : '', startX + 455, y);
+    doc.text(v.valor_fijo ? v.valor_fijo.toFixed(0) : '', startX + 495, y);
+    doc.text(v.sueldo_total ? v.sueldo_total.toFixed(0) : '', startX + 535, y);
     y += 14;
   }
 

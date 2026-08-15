@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { pool } = require('../db');
 
-const adminPassHash = bcrypt.hashSync(process.env.ADMIN_PASS || '1234', 10);
+const adminPassHash = bcrypt.hashSync(process.env.ADMIN_PASS, 10);
 
 exports.verificarCredenciales = (usuario, contrasena) => {
   const adminUser = process.env.ADMIN_USER || 'admin';

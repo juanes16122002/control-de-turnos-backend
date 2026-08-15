@@ -11,7 +11,7 @@ async function obtenerTurnosEsteMes() {
     FROM turnos t
     JOIN empleados e ON t.empleado_id = e.id
     LEFT JOIN empresas emp ON t.empresa_id = emp.id
-    WHERE LEFT(t.fecha, 7) = $1
+    WHERE to_char(t.fecha, 'YYYY-MM') = $1
     ORDER BY t.fecha DESC
   `, [`${anioActual}-${mesActual}`]);
   return rows;
@@ -28,19 +28,19 @@ exports.stats = async () => {
              COALESCE(SUM(t.horas_trabajadas), 0) AS total_horas,
              COALESCE(SUM(t.sueldo_total), 0) AS total_sueldo
       FROM empleados e
-      LEFT JOIN turnos t ON t.empleado_id = e.id AND LEFT(t.fecha, 7) = $1
+      LEFT JOIN turnos t ON t.empleado_id = e.id AND to_char(t.fecha, 'YYYY-MM') = $1
       GROUP BY e.id
       ORDER BY total_horas DESC
     `, [`${anioActual}-${mesActual}`]).then(r => r.rows),
     pool.query(`
       SELECT emp.id, emp.nombre, COUNT(t.id)::int AS total
       FROM empresas emp
-      LEFT JOIN turnos t ON t.empresa_id = emp.id AND LEFT(t.fecha, 7) = $1
+      LEFT JOIN turnos t ON t.empresa_id = emp.id AND to_char(t.fecha, 'YYYY-MM') = $1
       GROUP BY emp.id
       ORDER BY total DESC
     `, [`${anioActual}-${mesActual}`]).then(r => r.rows),
     pool.query(`
-      SELECT t.fecha, t.nombre_evento, e.nombre AS empleado_nombre,
+      SELECT to_char(t.fecha, 'YYYY-MM-DD') AS fecha, t.nombre_evento, e.nombre AS empleado_nombre,
              emp.nombre AS empresa_nombre, t.horas_trabajadas, t.sueldo_total
       FROM turnos t
       JOIN empleados e ON t.empleado_id = e.id

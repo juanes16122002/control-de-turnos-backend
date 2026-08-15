@@ -25,9 +25,9 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS turnos (
       id SERIAL PRIMARY KEY,
       empleado_id INTEGER NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
-      fecha TEXT NOT NULL,
-      hora_entrada TEXT NOT NULL,
-      hora_salida TEXT,
+      fecha DATE NOT NULL,
+      hora_entrada TIMESTAMPTZ NOT NULL,
+      hora_salida TIMESTAMPTZ,
       empresa_id INTEGER REFERENCES empresas(id) ON DELETE SET NULL,
       nombre_evento TEXT,
       area TEXT,

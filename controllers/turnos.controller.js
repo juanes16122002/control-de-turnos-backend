@@ -52,6 +52,6 @@ exports.porEmpleado = catchAsync(async (req, res) => {
 });
 
 exports.global = catchAsync(async (req, res) => {
-  const rows = await turnosService.global(req.query);
-  res.json(rows);
+  const result = await turnosService.globalPaginado(req.query);
+  res.json(result);
 });
