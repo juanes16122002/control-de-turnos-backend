@@ -25,6 +25,7 @@ const exportEmpleadoRoutes = require('./routes/exportEmpleado.routes');
 const exportGlobalRoutes = require('./routes/exportGlobal.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const kioscoRoutes = require('./routes/kiosco.routes');
+const saludRoutes = require('./routes/salud.routes');
 const asistenciasRoutes = require('./routes/asistencias.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const { resolverSaltosProxy } = require('./config/proxy');
@@ -62,6 +63,7 @@ app.use(authRoutes);
 // Rutas públicas: deben ir ANTES de los routers protegidos, porque estos aplican
 // verificarToken con router.use() a toda petición que pase por ellos.
 app.use(kioscoRoutes);
+app.use(saludRoutes);
 app.use(empleadosRoutes);
 app.use(empresasRoutes);
 app.use(turnosRoutes);
