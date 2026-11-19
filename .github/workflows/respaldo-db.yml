@@ -1,0 +1,110 @@
+# Respaldo diario cifrado de la base de datos (Supabase, plan gratuito sin respaldos automáticos).
+#
+# Secretos requeridos (Settings → Secrets and variables → Actions → Secrets):
+#   RESPALDO_DATABASE_URL  cadena de conexión a Supabase (Session pooler)
+#   RESPALDO_CLAVE         contraseña de cifrado (mín. 16 caracteres). Guárdala en un gestor de
+#                          contraseñas: SIN ELLA LOS RESPALDOS NO SE PUEDEN ABRIR.
+#
+# Cada ejecución:
+#   1. Exporta el esquema public con pg_dump 17 (misma versión mayor que Supabase).
+#   2. Lo restaura en una base temporal y compara la cantidad de filas con producción.
+#   3. Lo cifra con AES-256 (GPG) y verifica que se descifra a un archivo idéntico.
+#   4. Sube SOLO el archivo cifrado como artifact (se conserva 30 días).
+# El repo es público: nunca se sube nada sin cifrar. Si algún paso falla, GitHub avisa por correo.
+#
+# Restaurar: ver DESPLIEGUE.md (sección "Respaldos").
+name: Respaldo de la base de datos
+
+on:
+  schedule:
+    - cron: '30 7 * * *'   # 07:30 UTC = 04:30 en Chile (verano) / 03:30 (invierno): fuera del horario de uso
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: respaldo-db
+  cancel-in-progress: false
+
+env:
+  PG_IMAGEN: postgres:17-alpine
+  TABLAS_A_VERIFICAR: empleados empresas turnos asistencias configuracion
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # Base temporal para comprobar que el respaldo se puede restaurar
+      verificacion:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: verificacion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Comprobar secretos
+        env:
+          URL: ${{ secrets.RESPALDO_DATABASE_URL }}
+          CLAVE: ${{ secrets.RESPALDO_CLAVE }}
+        run: |
+          [ -n "$URL" ] || { echo "::error::Falta el secreto RESPALDO_DATABASE_URL"; exit 1; }
+          [ ${#CLAVE} -ge 16 ] || { echo "::error::Falta RESPALDO_CLAVE o tiene menos de 16 caracteres"; exit 1; }
+          echo "FECHA=$(TZ=America/Santiago date +%Y-%m-%d_%H%M)" >> "$GITHUB_ENV"
+
+      - name: Exportar la base (pg_dump 17)
+        env:
+          URL: ${{ secrets.RESPALDO_DATABASE_URL }}
+        run: |
+          docker run --rm --network host -e URL -v "$PWD:/out" "$PG_IMAGEN" \
+            sh -c 'pg_dump "$URL" --format=custom --compress=9 --no-owner --no-acl --schema=public --file=/out/respaldo.dump'
+          ls -lh respaldo.dump
+
+      - name: Restaurar en una base temporal y comparar con producción
+        env:
+          URL: ${{ secrets.RESPALDO_DATABASE_URL }}
+          DESTINO: postgresql://postgres:verificacion@localhost:5432/postgres
+        run: |
+          pg() { docker run --rm --network host -e URL -e DESTINO -v "$PWD:/out" "$PG_IMAGEN" sh -c "$1"; }
+          # El esquema public ya existe en la base temporal: se omite su creación al restaurar
+          pg 'pg_restore --list /out/respaldo.dump | grep -v " SCHEMA - public " > /out/lista.txt'
+          pg 'pg_restore --no-owner --no-acl --exit-on-error --use-list=/out/lista.txt --dbname="$DESTINO" /out/respaldo.dump'
+          error=0
+          for t in $TABLAS_A_VERIFICAR; do
+            origen=$(pg "psql \"\$URL\" -Atc 'SELECT count(*) FROM public.$t'")
+            copia=$(pg "psql \"\$DESTINO\" -Atc 'SELECT count(*) FROM public.$t'")
+            estado=$([ "$origen" = "$copia" ] && echo ok || echo DISTINTO)
+            printf '%-14s producción=%-6s respaldo=%-6s %s\n' "$t" "$origen" "$copia" "$estado"
+            [ "$origen" = "$copia" ] || error=1
+          done
+          [ $error -eq 0 ] || { echo "::error::El respaldo no coincide con producción"; exit 1; }
+
+      - name: Cifrar (AES-256) y verificar el descifrado
+        env:
+          CLAVE: ${{ secrets.RESPALDO_CLAVE }}
+        run: |
+          ARCHIVO="respaldo_${FECHA}.dump.gpg"
+          printf '%s' "$CLAVE" > .clave && chmod 600 .clave
+          gpg --batch --yes --pinentry-mode loopback --passphrase-file .clave \
+              --symmetric --cipher-algo AES256 --output "$ARCHIVO" respaldo.dump
+          gpg --batch --quiet --pinentry-mode loopback --passphrase-file .clave --decrypt "$ARCHIVO" > verificado.dump
+          sha256sum respaldo.dump verificado.dump
+          cmp respaldo.dump verificado.dump
+          # Nada sin cifrar queda en el directorio que se sube
+          shred -u .clave respaldo.dump verificado.dump lista.txt
+          echo "ARCHIVO=$ARCHIVO" >> "$GITHUB_ENV"
+          ls -lh "$ARCHIVO"
+
+      - name: Guardar el respaldo cifrado (30 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVO }}
+          path: ${{ env.ARCHIVO }}
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
