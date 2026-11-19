@@ -1,5 +1,8 @@
 # Mantiene despierto el backend en el plan gratuito de Render (se apaga tras 15 min sin tráfico
 # y tarda ~1 min en volver), SOLO dentro del horario de operación en hora de Chile.
+# Consulta /salud, que hace un SELECT 1: así también genera actividad diaria en Supabase, cuyo plan
+# gratuito pausa el proyecto tras ~7 días sin actividad en la base de datos. Si la base no responde,
+# /salud devuelve 503 y la ejecución falla (GitHub avisa por correo al dueño del repo).
 #
 # Configuración (Settings → Secrets and variables → Actions → Variables):
 #   BACKEND_URL       (obligatoria)  p. ej. https://control-de-turnos-backend.onrender.com
@@ -53,4 +56,4 @@ jobs:
           fi
           # Hasta ~2 min de espera por si el servicio estaba dormido
           curl --fail --silent --show-error --max-time 30 --retry 4 --retry-delay 10 --retry-all-errors \
-            "$BACKEND_URL/" -o /dev/null -w "HTTP %{http_code} en %{time_total}s\n"
+            "$BACKEND_URL/salud" -w "\nHTTP %{http_code} en %{time_total}s\n"
