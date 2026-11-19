@@ -61,7 +61,8 @@ jobs:
         env:
           URL: ${{ secrets.RESPALDO_DATABASE_URL }}
         run: |
-          docker run --rm --network host -e URL -v "$PWD:/out" "$PG_IMAGEN" \
+          # --user: los archivos quedan a nombre del usuario del runner (no de root) para poder borrarlos
+          docker run --rm --network host --user "$(id -u):$(id -g)" -e URL -e HOME=/tmp -v "$PWD:/out" "$PG_IMAGEN" \
             sh -c 'pg_dump "$URL" --format=custom --compress=9 --no-owner --no-acl --schema=public --file=/out/respaldo.dump'
           ls -lh respaldo.dump
 
@@ -70,7 +71,7 @@ jobs:
           URL: ${{ secrets.RESPALDO_DATABASE_URL }}
           DESTINO: postgresql://postgres:verificacion@localhost:5432/postgres
         run: |
-          pg() { docker run --rm --network host -e URL -e DESTINO -v "$PWD:/out" "$PG_IMAGEN" sh -c "$1"; }
+          pg() { docker run --rm --network host --user "$(id -u):$(id -g)" -e URL -e DESTINO -e HOME=/tmp -v "$PWD:/out" "$PG_IMAGEN" sh -c "$1"; }
           # El esquema public ya existe en la base temporal: se omite su creación al restaurar
           pg 'pg_restore --list /out/respaldo.dump | grep -v " SCHEMA - public " > /out/lista.txt'
           pg 'pg_restore --no-owner --no-acl --exit-on-error --use-list=/out/lista.txt --dbname="$DESTINO" /out/respaldo.dump'
