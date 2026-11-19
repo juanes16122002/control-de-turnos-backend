@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
+const { claveLimite } = require('../config/proxy');
 const { verificarToken } = require('../middlewares/auth.middleware');
 const { loginValidator } = require('../middlewares/validation.middleware');
 const auth = require('../controllers/auth.controller');
@@ -11,6 +12,8 @@ const loginLimiter = rateLimit({
   message: { error: 'Demasiados intentos de inicio de sesión. Intenta de nuevo en 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
+  // IP real del cliente (Cloudflare en Render, trust proxy en otros entornos)
+  keyGenerator: claveLimite,
 });
 
 router.post('/login', loginLimiter, loginValidator, auth.login);

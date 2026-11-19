@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
+const { claveLimite } = require('../config/proxy');
 const { marcarAsistenciaValidator } = require('../middlewares/validation.middleware');
 const asistencia = require('../controllers/asistencia.controller');
 
@@ -13,6 +14,8 @@ const marcarLimiter = rateLimit({
   message: { error: 'Demasiadas solicitudes desde este dispositivo. Espera un momento.' },
   standardHeaders: true,
   legacyHeaders: false,
+  // IP real del cliente (Cloudflare en Render, trust proxy en otros entornos)
+  keyGenerator: claveLimite,
 });
 
 router.get('/kiosco/empleados', asistencia.empleadosKiosco);

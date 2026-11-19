@@ -1,0 +1,31 @@
+# Blueprint de Render (infraestructura como código) para el backend.
+# Crear desde Render → New → Blueprint → este repositorio.
+# Las variables con `sync: false` se piden al crear el servicio (no se guardan en el repo).
+services:
+  - type: web
+    name: control-de-turnos-backend
+    runtime: docker
+    plan: free            # Se apaga tras 15 min sin tráfico (ver .github/workflows/mantener-activo.yml)
+    region: oregon        # Misma región aproximada que Supabase (us-west-2): menor latencia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL          # Supabase → Connect → Session pooler (puerto 5432)
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true        # Render genera un valor aleatorio seguro
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASS
+        sync: false
+      - key: CORS_ORIGIN           # URL exacta del frontend en Vercel, sin "/" final
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: REFRESH_IDLE_HOURS
+        value: "12"
+      - key: SESSION_MAX_DAYS
+        value: "7"
+      - key: DB_POOL_MAX
+        value: "5"                 # Instancia gratuita pequeña: pocas conexiones bastan
