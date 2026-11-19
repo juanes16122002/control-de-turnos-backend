@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "node --test tests/",
-    "start": "node server.js"
+    "test": "node --test",
+    "start": "node server.js",
+    "migrar:supabase": "node scripts/migrar-a-supabase.js"
   },
   "keywords": [],
   "author": "",

@@ -18,12 +18,12 @@ function calcular({ horaEntrada, horaSalida, tarifaHora = TARIFA_HORA, tarifaHor
   };
 }
 
-async function calcularParaEmpleado(horaEntrada, horaSalida, empleadoId) {
+async function calcularParaEmpleado(horaEntrada, horaSalida, empleadoId, db = pool) {
   let tarifaHora = TARIFA_HORA;
   let tarifaHoraExtra = TARIFA_HORA_EXTRA;
 
   if (empleadoId) {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       'SELECT tarifa_hora, tarifa_hora_extra FROM empleados WHERE id = $1',
       [empleadoId]
     );

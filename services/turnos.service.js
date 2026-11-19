@@ -2,9 +2,10 @@ const { pool } = require('../db');
 const AppError = require('../utils/AppError');
 const { calcularParaEmpleado } = require('./sueldo.service');
 
-exports.crear = async (data) => {
-  const v = await calcularParaEmpleado(data.hora_entrada, data.hora_salida, data.empleado_id);
-  const { rows } = await pool.query(`
+// `db` permite ejecutar dentro de una transacción (cliente de pg); por defecto usa el pool.
+exports.crear = async (data, db = pool) => {
+  const v = await calcularParaEmpleado(data.hora_entrada, data.hora_salida, data.empleado_id, db);
+  const { rows } = await db.query(`
     INSERT INTO turnos
       (empleado_id, fecha, hora_entrada, hora_salida, empresa_id, nombre_evento, area,
        horas_trabajadas, horas_extra, valor_horas_extra, valor_fijo, sueldo_total)

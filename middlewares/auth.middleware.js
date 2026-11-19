@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { JWT_ALGORITMO } = require('../config/auth');
 
 const verificarToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -12,7 +13,8 @@ const verificarToken = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Algoritmo fijado: no se acepta ningún otro aunque el token lo declare
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: [JWT_ALGORITMO] });
     req.usuario = decoded.usuario;
     next();
   } catch (err) {

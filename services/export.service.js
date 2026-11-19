@@ -1,6 +1,7 @@
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const { formatearHora } = require('../helpers/tiempo');
+const { fechaLocal } = require('../helpers/asistencia');
 const { calcular } = require('./sueldo.service');
 const { TARIFA_HORA, TARIFA_HORA_EXTRA } = require('../config/tarifas');
 
@@ -175,4 +176,57 @@ exports.generarPDFGlobal = (titulo, rows, res) => {
   }
 
   doc.end();
+};
+
+exports.generarExcelAsistencias = (rows) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Asistencias');
+
+  sheet.columns = [
+    { header: 'Empleado', key: 'empleado', width: 28 },
+    { header: 'Fecha', key: 'fecha', width: 12 },
+    { header: 'Entrada', key: 'entrada', width: 10 },
+    { header: 'Salida', key: 'salida', width: 18 },
+    { header: 'Horas', key: 'horas', width: 9 },
+    { header: 'Estado', key: 'estado', width: 12 },
+    { header: 'Origen entrada', key: 'origenEntrada', width: 15 },
+    { header: 'Origen salida', key: 'origenSalida', width: 15 },
+    { header: 'Dist. entrada (m)', key: 'distEntrada', width: 16 },
+    { header: 'Dist. salida (m)', key: 'distSalida', width: 15 },
+    { header: 'Turno', key: 'turno', width: 10 },
+    { header: 'Observación', key: 'observacion', width: 40 },
+  ];
+  sheet.getRow(1).font = { bold: true };
+
+  let totalHoras = 0;
+  for (const r of rows) {
+    // Si la salida cae en otro día (turno nocturno), se antepone la fecha
+    let salida = '';
+    if (r.salida) {
+      const fechaSalida = fechaLocal(r.salida);
+      salida = fechaSalida !== r.fecha
+        ? `${fechaSalida} ${formatearHora(r.salida)}`
+        : formatearHora(r.salida);
+      totalHoras += r.horas;
+    }
+    sheet.addRow({
+      empleado: r.empleado_nombre,
+      fecha: r.fecha,
+      entrada: formatearHora(r.entrada),
+      salida,
+      horas: r.salida ? r.horas : '',
+      estado: r.salida ? 'Cerrada' : 'En curso',
+      origenEntrada: r.origen_entrada,
+      origenSalida: r.origen_salida || '',
+      distEntrada: r.ubicacion_entrada?.distancia_m ?? '',
+      distSalida: r.ubicacion_salida?.distancia_m ?? '',
+      turno: r.turno_id ? `#${r.turno_id}` : '',
+      observacion: r.observacion || '',
+    });
+  }
+
+  sheet.addRow({});
+  const total = sheet.addRow({ empleado: 'TOTAL HORAS (cerradas)', horas: Number(totalHoras.toFixed(2)) });
+  total.font = { bold: true };
+  return workbook;
 };

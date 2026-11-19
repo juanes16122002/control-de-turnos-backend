@@ -5,40 +5,30 @@ const AppError = require('../utils/AppError');
 exports.login = catchAsync(async (req, res) => {
   const { usuario, contrasena } = req.body;
 
-  if (!authService.verificarCredenciales(usuario, contrasena)) {
+  if (!(await authService.verificarCredenciales(usuario, contrasena))) {
     throw new AppError(401, 'Credenciales incorrectas');
   }
 
   const token = authService.generarToken(usuario);
-  const refreshToken = await authService.generarRefreshToken(usuario);
+  const refreshToken = await authService.crearSesion(usuario);
 
   res.json({ token, refreshToken });
 });
 
 exports.refresh = catchAsync(async (req, res) => {
   const { refreshToken } = req.body;
-
-  if (!refreshToken) {
+  if (!refreshToken || typeof refreshToken !== 'string') {
     throw new AppError(400, 'Refresh token requerido');
   }
 
-  const stored = await authService.verificarRefreshToken(refreshToken);
-  if (!stored) {
-    throw new AppError(401, 'Refresh token inválido o expirado');
-  }
-
-  await authService.eliminarRefreshToken(refreshToken);
-
-  const newToken = authService.generarToken(stored.usuario);
-  const newRefreshToken = await authService.generarRefreshToken(stored.usuario);
-
-  res.json({ token: newToken, refreshToken: newRefreshToken });
+  const { usuario, refreshToken: nuevoRefresh } = await authService.rotarRefreshToken(refreshToken);
+  res.json({ token: authService.generarToken(usuario), refreshToken: nuevoRefresh });
 });
 
 exports.logout = catchAsync(async (req, res) => {
   const { refreshToken } = req.body;
-  if (refreshToken) {
-    await authService.eliminarRefreshToken(refreshToken);
+  if (refreshToken && typeof refreshToken === 'string') {
+    await authService.revocarSesion(refreshToken);
   }
   res.json({ message: 'Sesión cerrada correctamente' });
 });
