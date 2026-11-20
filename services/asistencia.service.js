@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const AppError = require('../utils/AppError');
 const turnosService = require('./turnos.service');
 const configuracionService = require('./configuracion.service');
+const { subconsultaEventoDe } = require('./eventos.service');
 const { evaluarUbicacion } = require('../helpers/geo');
 const { formatearHora } = require('../helpers/tiempo');
 const { validarRango, fechaLocal } = require('../helpers/asistencia');
@@ -23,9 +24,39 @@ const CAMPOS = `
   a.observacion, a.turno_id, a.created_at, a.updated_at,
   a.ubicacion_entrada, a.ubicacion_salida,
   e.nombre AS empleado_nombre,
+  a.evento_id, ev.nombre AS evento_nombre, ev.empresa_id, em.nombre AS empresa_nombre,
   to_char((a.entrada AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS fecha,
   (EXTRACT(EPOCH FROM (COALESCE(a.salida, NOW()) - a.entrada)) / 3600)::float8 AS horas
 `;
+
+const ORIGEN = `
+  FROM asistencias a
+  JOIN empleados e ON e.id = a.empleado_id
+  LEFT JOIN eventos ev ON ev.id = a.evento_id
+  LEFT JOIN empresas em ON em.id = ev.empresa_id
+`;
+
+const PG_FK_VIOLATION = '23503';
+
+// Error de clave foránea al guardar una asistencia: ¿falló el empleado o el evento?
+function errorReferencia(err) {
+  if (err.code !== PG_FK_VIOLATION) return null;
+  return /evento/.test(err.constraint || '')
+    ? new AppError(404, 'Evento no encontrado')
+    : new AppError(404, 'Técnico no encontrado');
+}
+
+// SQL para el evento_id de una asistencia según lo pedido:
+// undefined → automático (según asignación y fecha de entrada), null → sin evento, número → ese evento.
+function eventoSql(eventoId, params, empleadoSql, entradaSql) {
+  if (eventoId === undefined) {
+    params.push(ZONA_HORARIA);
+    return subconsultaEventoDe(empleadoSql, entradaSql, `$${params.length}`);
+  }
+  if (eventoId === null || eventoId === '') return 'NULL';
+  params.push(Number(eventoId));
+  return `$${params.length}`;
+}
 
 function mapear(row) {
   if (!row) return row;
@@ -34,7 +65,7 @@ function mapear(row) {
 
 async function obtenerPorId(id, db = pool) {
   const { rows } = await db.query(
-    `SELECT ${CAMPOS} FROM asistencias a JOIN empleados e ON e.id = a.empleado_id WHERE a.id = $2`,
+    `SELECT ${CAMPOS} ${ORIGEN} WHERE a.id = $2`,
     [ZONA_HORARIA, id]
   );
   return mapear(rows[0]) || null;
@@ -42,7 +73,7 @@ async function obtenerPorId(id, db = pool) {
 
 async function obtenerAbierta(empleadoId) {
   const { rows } = await pool.query(
-    `SELECT ${CAMPOS} FROM asistencias a JOIN empleados e ON e.id = a.empleado_id
+    `SELECT ${CAMPOS} ${ORIGEN}
      WHERE a.empleado_id = $2 AND a.salida IS NULL`,
     [ZONA_HORARIA, empleadoId]
   );
@@ -51,7 +82,7 @@ async function obtenerAbierta(empleadoId) {
 
 function traducirErrorPg(err) {
   if (err.code === PG_UNIQUE_VIOLATION) {
-    return new AppError(409, 'El empleado ya tiene una asistencia abierta (sin salida). Ciérrala antes de crear otra.');
+    return new AppError(409, 'El técnico ya tiene una asistencia abierta (sin salida). Ciérrala antes de crear otra.');
   }
   if (err.code === PG_CHECK_VIOLATION) {
     return new AppError(400, 'La salida debe ser posterior a la entrada');
@@ -91,7 +122,7 @@ async function verificarPin(empleadoId, pin) {
   );
   const emp = rows[0];
   // Mismo mensaje para "no existe" y "PIN incorrecto": no revela qué falló
-  if (!emp || !emp.pin_hash) throw new AppError(401, 'Empleado o PIN incorrecto');
+  if (!emp || !emp.pin_hash) throw new AppError(401, 'Técnico o PIN incorrecto');
 
   if (emp.pin_bloqueado_hasta && new Date(emp.pin_bloqueado_hasta) > new Date()) {
     const minutos = Math.ceil((new Date(emp.pin_bloqueado_hasta) - new Date()) / 60000);
@@ -112,7 +143,7 @@ async function verificarPin(empleadoId, pin) {
       throw new AppError(429, `Demasiados intentos fallidos. PIN bloqueado por ${PIN_BLOQUEO_MINUTOS} minutos.`);
     }
     const restantes = PIN_MAX_INTENTOS - r.pin_intentos;
-    throw new AppError(401, `Empleado o PIN incorrecto. Te quedan ${restantes} intento(s).`);
+    throw new AppError(401, `Técnico o PIN incorrecto. Te quedan ${restantes} intento(s).`);
   }
 
   if (emp.pin_intentos > 0 || emp.pin_bloqueado_hasta) {
@@ -167,9 +198,9 @@ exports.marcar = async ({ empleado_id, pin, tipo, ubicacion }) => {
   if (tipo === 'entrada') {
     try {
       const { rows } = await pool.query(
-        `INSERT INTO asistencias (empleado_id, entrada, origen_entrada, ubicacion_entrada)
-         VALUES ($1, NOW(), 'kiosco', $2) RETURNING id`,
-        [empleado.id, ubicacionValidada]
+        `INSERT INTO asistencias (empleado_id, entrada, origen_entrada, ubicacion_entrada, evento_id)
+         VALUES ($2, NOW(), 'kiosco', $3, ${subconsultaEventoDe('$2', 'NOW()', '$1')}) RETURNING id`,
+        [ZONA_HORARIA, empleado.id, ubicacionValidada]
       );
       return { tipo, empleado, asistencia: await obtenerPorId(rows[0].id) };
     } catch (err) {
@@ -206,7 +237,7 @@ exports.marcar = async ({ empleado_id, pin, tipo, ubicacion }) => {
 // Administración
 // ---------------------------------------------------------------------------
 
-function construirFiltros({ desde, hasta, empleado_id, estado }) {
+function construirFiltros({ desde, hasta, empleado_id, estado, evento_id, empresa_id }) {
   const params = [ZONA_HORARIA];
   const cond = [];
   if (desde) {
@@ -220,6 +251,16 @@ function construirFiltros({ desde, hasta, empleado_id, estado }) {
   if (empleado_id) {
     params.push(empleado_id);
     cond.push(`a.empleado_id = $${params.length}`);
+  }
+  if (evento_id === 'ninguno') {
+    cond.push('a.evento_id IS NULL');
+  } else if (evento_id) {
+    params.push(evento_id);
+    cond.push(`a.evento_id = $${params.length}`);
+  }
+  if (empresa_id) {
+    params.push(empresa_id);
+    cond.push(`ev.empresa_id = $${params.length}`);
   }
   if (estado === 'abiertas') cond.push('a.salida IS NULL');
   if (estado === 'cerradas') cond.push('a.salida IS NOT NULL');
@@ -235,8 +276,7 @@ exports.listar = async ({ page = 1, limit = 50, ...filtros }) => {
   const { rows: [resumen] } = await pool.query(`
     WITH f AS (
       SELECT ${CAMPOS}
-      FROM asistencias a
-      JOIN empleados e ON e.id = a.empleado_id
+      ${ORIGEN}
       ${where}
     )
     SELECT COUNT(*)::int AS total,
@@ -247,8 +287,7 @@ exports.listar = async ({ page = 1, limit = 50, ...filtros }) => {
 
   const { rows } = await pool.query(`
     SELECT ${CAMPOS}
-    FROM asistencias a
-    JOIN empleados e ON e.id = a.empleado_id
+    ${ORIGEN}
     ${where}
     ORDER BY a.entrada DESC
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -271,8 +310,7 @@ exports.listarTodas = async (filtros) => {
   const { where, params } = construirFiltros(filtros);
   const { rows } = await pool.query(`
     SELECT ${CAMPOS}
-    FROM asistencias a
-    JOIN empleados e ON e.id = a.empleado_id
+    ${ORIGEN}
     ${where}
     ORDER BY a.entrada, e.nombre
   `, params);
@@ -282,32 +320,33 @@ exports.listarTodas = async (filtros) => {
 exports.activas = async () => {
   const { rows } = await pool.query(`
     SELECT ${CAMPOS}
-    FROM asistencias a
-    JOIN empleados e ON e.id = a.empleado_id
+    ${ORIGEN}
     WHERE a.salida IS NULL
     ORDER BY a.entrada
   `, [ZONA_HORARIA]);
   return rows.map(mapear);
 };
 
-exports.crear = async ({ empleado_id, entrada, salida, observacion }) => {
+exports.crear = async ({ empleado_id, entrada, salida, observacion, evento_id }) => {
   const errorRango = validarRango(entrada, salida, { toleranciaMs: TOLERANCIA_FUTURO_MS });
   if (errorRango) throw new AppError(400, errorRango);
 
+  const params = [empleado_id, entrada, salida || null, salida ? 'admin' : null, observacion || null];
+  const evento = eventoSql(evento_id, params, '$1::int', '$2::timestamptz');
   try {
     const { rows } = await pool.query(`
-      INSERT INTO asistencias (empleado_id, entrada, salida, origen_entrada, origen_salida, observacion)
-      VALUES ($1, $2, $3, 'admin', $4, $5)
+      INSERT INTO asistencias (empleado_id, entrada, salida, origen_entrada, origen_salida, observacion, evento_id)
+      VALUES ($1, $2, $3, 'admin', $4, $5, ${evento})
       RETURNING id
-    `, [empleado_id, entrada, salida || null, salida ? 'admin' : null, observacion || null]);
+    `, params);
     return obtenerPorId(rows[0].id);
   } catch (err) {
-    if (err.code === '23503') throw new AppError(404, 'Empleado no encontrado');
-    throw traducirErrorPg(err);
+    throw errorReferencia(err) || traducirErrorPg(err);
   }
 };
 
-exports.actualizar = async (id, { entrada, salida, observacion }) => {
+// evento_id: undefined conserva el evento actual, null lo quita, número lo cambia
+exports.actualizar = async (id, { entrada, salida, observacion, evento_id }) => {
   const actual = await obtenerPorId(id);
   if (!actual) return null;
   if (actual.turno_id) {
@@ -322,14 +361,15 @@ exports.actualizar = async (id, { entrada, salida, observacion }) => {
     || new Date(salida).getTime() !== new Date(actual.salida).getTime();
   const origenSalida = salida ? (salidaCambio ? 'admin' : actual.origen_salida) : null;
 
+  const eventoFinal = evento_id === undefined ? actual.evento_id : (evento_id ? Number(evento_id) : null);
   try {
     await pool.query(`
       UPDATE asistencias
-      SET entrada = $1, salida = $2, origen_salida = $3, observacion = $4, updated_at = NOW()
-      WHERE id = $5
-    `, [entrada, salida || null, origenSalida, observacion ?? actual.observacion, id]);
+      SET entrada = $1, salida = $2, origen_salida = $3, observacion = $4, evento_id = $5, updated_at = NOW()
+      WHERE id = $6
+    `, [entrada, salida || null, origenSalida, observacion ?? actual.observacion, eventoFinal, id]);
   } catch (err) {
-    throw traducirErrorPg(err);
+    throw errorReferencia(err) || traducirErrorPg(err);
   }
   return obtenerPorId(id);
 };
@@ -354,9 +394,12 @@ exports.convertirEnTurno = async (id, { nombre_evento, area, empresa_id }) => {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(`
-      SELECT id, empleado_id, entrada, salida, turno_id,
-             to_char((entrada AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS fecha
-      FROM asistencias WHERE id = $2 FOR UPDATE
+      SELECT a.id, a.empleado_id, a.entrada, a.salida, a.turno_id,
+             to_char((a.entrada AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS fecha,
+             ev.nombre AS evento_nombre, ev.empresa_id AS evento_empresa_id
+      FROM asistencias a
+      LEFT JOIN eventos ev ON ev.id = a.evento_id
+      WHERE a.id = $2 FOR UPDATE OF a
     `, [ZONA_HORARIA, id]);
     const a = rows[0];
 
@@ -364,13 +407,17 @@ exports.convertirEnTurno = async (id, { nombre_evento, area, empresa_id }) => {
     if (!a.salida) throw new AppError(409, 'La asistencia no tiene salida. Ciérrala antes de convertirla en turno.');
     if (a.turno_id) throw new AppError(409, 'Esta asistencia ya fue convertida en turno');
 
+    // Por defecto el turno hereda el nombre y la empresa del evento de la asistencia
+    const nombre = nombre_evento?.trim() || a.evento_nombre;
+    if (!nombre) throw new AppError(400, 'El nombre del evento es obligatorio');
+
     const turno = await turnosService.crear({
       empleado_id: a.empleado_id,
       fecha: a.fecha,
       hora_entrada: a.entrada,
       hora_salida: a.salida,
-      empresa_id: empresa_id || null,
-      nombre_evento,
+      empresa_id: empresa_id || a.evento_empresa_id || null,
+      nombre_evento: nombre,
       area,
     }, client);
 

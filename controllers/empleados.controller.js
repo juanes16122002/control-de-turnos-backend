@@ -8,14 +8,15 @@ exports.listar = catchAsync(async (req, res) => {
 
 exports.obtener = catchAsync(async (req, res) => {
   const empleado = await empleadosService.obtener(Number(req.params.id));
-  if (!empleado) throw new AppError(404, 'Empleado no encontrado');
+  if (!empleado) throw new AppError(404, 'Técnico no encontrado');
   res.json(empleado);
 });
 
 exports.crear = catchAsync(async (req, res) => {
   const { nombre, tarifa_hora, tarifa_hora_extra } = req.body;
-  if (!nombre) throw new AppError(400, 'El nombre es obligatorio');
-  const empleado = await empleadosService.crear(nombre, tarifa_hora, tarifa_hora_extra);
+  if (!nombre || !nombre.trim()) throw new AppError(400, 'El nombre es obligatorio');
+  const tarifa = (v) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+  const empleado = await empleadosService.crear(nombre.trim(), tarifa(tarifa_hora), tarifa(tarifa_hora_extra));
   res.status(201).json(empleado);
 });
 
@@ -37,14 +38,14 @@ exports.actualizar = catchAsync(async (req, res) => {
   }
 
   const empleado = await empleadosService.actualizar(Number(id), data);
-  if (!empleado) throw new AppError(404, 'Empleado no encontrado');
+  if (!empleado) throw new AppError(404, 'Técnico no encontrado');
   res.json(empleado);
 });
 
 exports.eliminar = catchAsync(async (req, res) => {
   const { id } = req.params;
   if (!(await empleadosService.eliminar(Number(id)))) {
-    throw new AppError(404, 'Empleado no encontrado');
+    throw new AppError(404, 'Técnico no encontrado');
   }
-  res.json({ message: 'Empleado eliminado correctamente' });
+  res.json({ message: 'Técnico eliminado correctamente' });
 });

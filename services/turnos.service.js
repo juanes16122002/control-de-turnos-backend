@@ -59,7 +59,7 @@ exports.duplicar = async (id, nuevaFecha) => {
        original.nombre_evento, original.area, original.empresa_id]);
 
   if (duplicado.rows.length > 0) {
-    throw new AppError(409, 'Ya existe un turno idéntico para ese empleado en esa fecha');
+    throw new AppError(409, 'Ya existe un turno idéntico para ese técnico en esa fecha');
   }
 
   const data = {

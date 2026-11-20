@@ -8,8 +8,8 @@ exports.listar = catchAsync(async (req, res) => {
 
 exports.crear = catchAsync(async (req, res) => {
   const { nombre } = req.body;
-  if (!nombre) throw new AppError(400, 'El nombre es obligatorio');
-  const empresa = await empresasService.crear(nombre);
+  if (!nombre || !nombre.trim()) throw new AppError(400, 'El nombre es obligatorio');
+  const empresa = await empresasService.crear(nombre.trim());
   res.status(201).json(empresa);
 });
 

@@ -14,7 +14,7 @@ pool.on('error', (err) => {
 // Data API (PostgREST): sin RLS, cualquiera con la anon key podría leerlas
 // (incluido empleados.pin_hash). Activar RLS sin políticas bloquea ese acceso,
 // mientras que el backend —que se conecta como el dueño de las tablas— no se ve afectado.
-const TABLAS = ['empleados', 'empresas', 'turnos', 'refresh_tokens', 'asistencias', 'configuracion'];
+const TABLAS = ['empleados', 'empresas', 'turnos', 'refresh_tokens', 'asistencias', 'configuracion', 'eventos', 'evento_empleados'];
 
 async function initDb() {
   await pool.query(`
@@ -140,6 +140,42 @@ async function initDb() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // --- Eventos ---
+  // Un evento siempre pertenece a una empresa (productora). La empresa no se puede borrar
+  // mientras tenga eventos (RESTRICT): se perdería a quién se le trabajó.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS eventos (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE RESTRICT,
+      fecha_inicio DATE NOT NULL,
+      fecha_fin DATE NOT NULL,
+      descripcion TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT eventos_fechas_validas CHECK (fecha_fin >= fecha_inicio)
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS ix_eventos_fechas ON eventos (fecha_inicio, fecha_fin)');
+
+  // Empleados asignados a cada evento
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS evento_empleados (
+      evento_id INTEGER NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+      empleado_id INTEGER NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (evento_id, empleado_id)
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS ix_evento_empleados_empleado ON evento_empleados (empleado_id)');
+
+  // Evento al que pertenece cada asistencia (se asigna automáticamente al marcar)
+  await pool.query(`
+    ALTER TABLE asistencias
+      ADD COLUMN IF NOT EXISTS evento_id INTEGER REFERENCES eventos(id) ON DELETE SET NULL
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS ix_asistencias_evento ON asistencias (evento_id)');
 
   // Idempotente: no falla si RLS ya estaba activo
   for (const tabla of TABLAS) {

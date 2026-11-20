@@ -41,16 +41,16 @@ exports.guardarGeocerca = catchAsync(async (req, res) => {
 
 exports.asignarPin = catchAsync(async (req, res) => {
   if (!(await asistenciaService.asignarPin(Number(req.params.id), req.body.pin))) {
-    throw new AppError(404, 'Empleado no encontrado');
+    throw new AppError(404, 'Técnico no encontrado');
   }
   res.json({ message: 'PIN asignado correctamente' });
 });
 
 exports.quitarPin = catchAsync(async (req, res) => {
   if (!(await asistenciaService.quitarPin(Number(req.params.id)))) {
-    throw new AppError(404, 'Empleado no encontrado');
+    throw new AppError(404, 'Técnico no encontrado');
   }
-  res.json({ message: 'PIN eliminado. El empleado ya no aparece en el kiosco.' });
+  res.json({ message: 'PIN eliminado. El técnico ya no aparece en el kiosco.' });
 });
 
 // --- Asistencias (admin) ---
@@ -64,14 +64,14 @@ exports.activas = catchAsync(async (req, res) => {
 });
 
 exports.crear = catchAsync(async (req, res) => {
-  const { empleado_id, entrada, salida, observacion } = req.body;
-  const asistencia = await asistenciaService.crear({ empleado_id: Number(empleado_id), entrada, salida, observacion });
+  const { empleado_id, entrada, salida, observacion, evento_id } = req.body;
+  const asistencia = await asistenciaService.crear({ empleado_id: Number(empleado_id), entrada, salida, observacion, evento_id });
   res.status(201).json(asistencia);
 });
 
 exports.actualizar = catchAsync(async (req, res) => {
-  const { entrada, salida, observacion } = req.body;
-  const asistencia = await asistenciaService.actualizar(Number(req.params.id), { entrada, salida, observacion });
+  const { entrada, salida, observacion, evento_id } = req.body;
+  const asistencia = await asistenciaService.actualizar(Number(req.params.id), { entrada, salida, observacion, evento_id });
   if (!asistencia) throw new AppError(404, 'Asistencia no encontrada');
   res.json(asistencia);
 });
