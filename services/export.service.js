@@ -29,7 +29,7 @@ exports.generarExcelEmpleado = (empleado, rows) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Turnos');
 
-  sheet.addRow(['Empleado', 'Fecha', 'Empresa', 'Evento', 'Área',
+  sheet.addRow(['Técnico', 'Fecha', 'Empresa', 'Evento', 'Área',
     'Hora entrada', 'Hora salida', 'Horas trabajadas', 'Horas extra',
     'Valor horas extra', 'Valor fijo', 'Sueldo total']);
 
@@ -146,7 +146,7 @@ exports.generarPDFGlobal = (titulo, rows, res) => {
   let y = doc.y;
 
   doc.fontSize(10);
-  doc.text('Fecha', startX, y); doc.text('Empleado', startX + 60, y, { width: 80 });
+  doc.text('Fecha', startX, y); doc.text('Técnico', startX + 60, y, { width: 80 });
   doc.text('Empresa', startX + 140, y, { width: 70 }); doc.text('Evento', startX + 210, y, { width: 80 });
   doc.text('Área', startX + 290, y, { width: 50 }); doc.text('Ent', startX + 340, y);
   doc.text('Sal', startX + 365, y); doc.text('Trab', startX + 390, y);
@@ -183,8 +183,10 @@ exports.generarExcelAsistencias = (rows) => {
   const sheet = workbook.addWorksheet('Asistencias');
 
   sheet.columns = [
-    { header: 'Empleado', key: 'empleado', width: 28 },
+    { header: 'Técnico', key: 'empleado', width: 28 },
     { header: 'Fecha', key: 'fecha', width: 12 },
+    { header: 'Evento', key: 'evento', width: 28 },
+    { header: 'Empresa', key: 'empresa', width: 22 },
     { header: 'Entrada', key: 'entrada', width: 10 },
     { header: 'Salida', key: 'salida', width: 18 },
     { header: 'Horas', key: 'horas', width: 9 },
@@ -212,6 +214,8 @@ exports.generarExcelAsistencias = (rows) => {
     sheet.addRow({
       empleado: r.empleado_nombre,
       fecha: r.fecha,
+      evento: r.evento_nombre || '',
+      empresa: r.empresa_nombre || '',
       entrada: formatearHora(r.entrada),
       salida,
       horas: r.salida ? r.horas : '',

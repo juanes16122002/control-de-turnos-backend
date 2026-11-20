@@ -8,7 +8,7 @@ exports.excel = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { rows: empRows } = await pool.query('SELECT nombre FROM empleados WHERE id = $1', [id]);
   const empleado = empRows[0];
-  if (!empleado) throw new AppError(404, 'Empleado no encontrado');
+  if (!empleado) throw new AppError(404, 'Técnico no encontrado');
 
   const rows = await turnosService.porEmpleado(id, req.query);
   const { desde, hasta, anio, mes } = req.query;
@@ -26,7 +26,7 @@ exports.pdf = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { rows: empRows } = await pool.query('SELECT nombre FROM empleados WHERE id = $1', [id]);
   const empleado = empRows[0];
-  if (!empleado) throw new AppError(404, 'Empleado no encontrado');
+  if (!empleado) throw new AppError(404, 'Técnico no encontrado');
 
   const rows = await turnosService.porEmpleado(id, req.query);
   const { desde, hasta, anio, mes } = req.query;

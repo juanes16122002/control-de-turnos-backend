@@ -27,6 +27,7 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const kioscoRoutes = require('./routes/kiosco.routes');
 const saludRoutes = require('./routes/salud.routes');
 const asistenciasRoutes = require('./routes/asistencias.routes');
+const eventosRoutes = require('./routes/eventos.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const { resolverSaltosProxy } = require('./config/proxy');
 
@@ -71,6 +72,7 @@ app.use(exportEmpleadoRoutes);
 app.use(exportGlobalRoutes);
 app.use(dashboardRoutes);
 app.use(asistenciasRoutes);
+app.use(eventosRoutes);
 
 app.use(errorHandler);
 
